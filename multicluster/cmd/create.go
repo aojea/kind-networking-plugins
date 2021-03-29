@@ -17,13 +17,25 @@ package cmd
 
 import (
 	"fmt"
+	"os"
 
 	"github.com/aojea/kind-networking-plugins/pkg/docker"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
 	"sigs.k8s.io/kind/pkg/cluster"
+	kindcmd "sigs.k8s.io/kind/pkg/cmd"
 )
+
+const rawConfig = `
+# three node (two workers) cluster config
+kind: Cluster
+apiVersion: kind.x-k8s.io/v1alpha4
+networking:
+  ipFamily: ipv4
+nodes:
+- role: control-plane
+`
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
@@ -77,24 +89,23 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		if err != nil {
 			return err
 		}
-
+		// use the new created docker network
+		os.Setenv("KIND_EXPERIMENTAL_DOCKER_NETWORK", clusterName)
+		// create the cluster
+		if err := provider.Create(
+			clusterName,
+			cluster.CreateWithRawConfig([]byte(rawConfig)),
+			// cluster.CreateWithNodeImage(flags.ImageName),
+			// cluster.CreateWithRetain(flags.Retain),
+			// cluster.CreateWithWaitForReady(flags.Wait),
+			// cluster.CreateWithKubeconfigPath(flags.Kubeconfig),
+			cluster.CreateWithDisplayUsage(true),
+			cluster.CreateWithDisplaySalutation(true),
+		); err != nil {
+			return errors.Wrap(err, "failed to create cluster")
+		}
+		// reset the env variable
+		os.Unsetenv("KIND_EXPERIMENTAL_DOCKER_NETWORK")
 	}
-
-}
-
-func createCluster(provider cluster.Provider, name string) error {
-	// create the cluster
-	if err = provider.Create(
-		flags.Name,
-		withConfig,
-		cluster.CreateWithNodeImage(flags.ImageName),
-		cluster.CreateWithRetain(flags.Retain),
-		cluster.CreateWithWaitForReady(flags.Wait),
-		cluster.CreateWithKubeconfigPath(flags.Kubeconfig),
-		cluster.CreateWithDisplayUsage(true),
-		cluster.CreateWithDisplaySalutation(true),
-	); err != nil {
-		return errors.Wrap(err, "failed to create cluster")
-	}
-
+	return nil
 }

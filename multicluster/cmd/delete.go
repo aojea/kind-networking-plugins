@@ -17,35 +17,74 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
+	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+
+	"sigs.k8s.io/kind/pkg/cluster"
+	kindcmd "sigs.k8s.io/kind/pkg/cmd"
+
+	"github.com/aojea/kind-networking-plugins/pkg/docker"
 )
 
 // deleteCmd represents the delete command
 var deleteCmd = &cobra.Command{
 	Use:   "delete",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("delete called")
+	Short: "Delete the specified multicluster",
+	Long:  `Delete the specified multicluster`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return deleteMultiCluster(cmd)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(deleteCmd)
 
-	// Here you will define your flags and configuration settings.
+	deleteCmd.Flags().String(
+		"name",
+		cluster.DefaultName,
+		"the multicluster context name",
+	)
+}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// deleteCmd.PersistentFlags().String("foo", "", "A help for foo")
+func deleteMultiCluster(cmd *cobra.Command) error {
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	logger := kindcmd.NewLogger()
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// deleteCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+	)
+	clusters, err := provider.List()
+	if err != nil {
+		return err
+	}
+
+	clusterNamePrefix := fmt.Sprintf("multi-%s-", name)
+	for _, cluster := range clusters {
+		if strings.Contains(cluster, clusterNamePrefix) {
+			if err = provider.Delete(cluster, ""); err != nil {
+				logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete cluster %q", cluster))
+				continue
+			}
+			logger.V(0).Infof("Deleted clusters: %q", cluster)
+		}
+	}
+	networks, err := docker.ListNetwork()
+	if err != nil {
+		return err
+	}
+	for _, network := range networks {
+		if strings.Contains(network, clusterNamePrefix) {
+			if err = docker.DeleteNetwork(network); err != nil {
+				logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete network %q", network))
+				continue
+			}
+		}
+	}
+	// TODO accumulate errors
+	return nil
 }

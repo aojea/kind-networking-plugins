@@ -17,35 +17,61 @@ package cmd
 
 import (
 	"fmt"
+	"strings"
 
 	"github.com/spf13/cobra"
+
+	"sigs.k8s.io/kind/pkg/cluster"
+	kindcmd "sigs.k8s.io/kind/pkg/cmd"
 )
 
 // getCmd represents the get command
 var getCmd = &cobra.Command{
 	Use:   "get",
-	Short: "A brief description of your command",
-	Long: `A longer description that spans multiple lines and likely contains examples
-and usage of using your command. For example:
-
-Cobra is a CLI library for Go that empowers applications.
-This application is a tool to generate the needed files
-to quickly create a Cobra application.`,
-	Run: func(cmd *cobra.Command, args []string) {
-		fmt.Println("get called")
+	Short: "Get the clusters that belong to the multi cluster",
+	Long:  `Get the clusters that belong to the multi cluster`,
+	RunE: func(cmd *cobra.Command, args []string) error {
+		return getMultiCluster(cmd)
 	},
 }
 
 func init() {
 	rootCmd.AddCommand(getCmd)
 
-	// Here you will define your flags and configuration settings.
+	getCmd.Flags().String(
+		"name",
+		cluster.DefaultName,
+		"the multicluster context name",
+	)
+}
 
-	// Cobra supports Persistent Flags which will work for this command
-	// and all subcommands, e.g.:
-	// getCmd.PersistentFlags().String("foo", "", "A help for foo")
+func getMultiCluster(cmd *cobra.Command) error {
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	logger := kindcmd.NewLogger()
 
-	// Cobra supports local flags which will only run when this command
-	// is called directly, e.g.:
-	// getCmd.Flags().BoolP("toggle", "t", false, "Help message for toggle")
+	provider := cluster.NewProvider(
+		cluster.ProviderWithLogger(logger),
+	)
+	clusters, err := provider.List()
+	if err != nil {
+		return err
+	}
+	if len(clusters) == 0 {
+		logger.V(0).Info("No kind clusters found.")
+		return nil
+	}
+
+	var inClusters []string
+	clusterNamePrefix := fmt.Sprintf("multi-%s-", name)
+	for _, cluster := range clusters {
+		if strings.Contains(cluster, clusterNamePrefix) {
+			inClusters = append(inClusters, cluster)
+		}
+	}
+	fmt.Printf("Multicluster %s contain following clusters: %v\n", name, inClusters)
+	// TODO: accumulate errors
+	return nil
 }
