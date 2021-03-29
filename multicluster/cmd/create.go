@@ -159,12 +159,22 @@ func configureMultiCluster(cmd *cobra.Command) error {
 func createWanem(name string) error {
 	containerName := "wan-" + name
 	args := []string{"run",
-		"-d",                    // run in the background
+		"-d", // run in the background
+		"--sysctl=net.ipv4.ip_forward=1",
+		"--privileged",
 		"--name", containerName, // well known name
 		dockerWanImage,
 	}
 
 	cmd := exec.Command("docker", args...)
+	err := cmd.Run()
+	if err != nil {
+		return err
+	}
+	// configure masquerading so clusters can reach internet
+	args = []string{"exec", containerName,
+		"iptables", " -t", "nat", "-A", "POSTROUTING", "-o", "eth0", "-j", " MASQUERADE",
+	}
+	cmd = exec.Command("docker", args...)
 	return cmd.Run()
-
 }
