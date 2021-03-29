@@ -96,3 +96,9 @@ func ListNetwork() ([]string, error) {
 		"--format", `{{ .Name }}`)
 	return exec.OutputLines(cmd)
 }
+
+func ConnectNetwork(nameOrId, network string) error {
+	cmd := exec.Command("docker", "network", "connect",
+		network, nameOrId)
+	return cmd.Run()
+}

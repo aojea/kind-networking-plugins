@@ -25,7 +25,10 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster"
 	kindcmd "sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/exec"
 )
+
+const dockerWanImage = "quay.io/aojea/wanem:latest"
 
 const rawConfig = `
 # three node (two workers) cluster config
@@ -76,16 +79,27 @@ func configureMultiCluster(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+	// create the container to emulate the WAN network
+	wanem := "wan-" + name
+	err = createWanem(name)
+	if err != nil {
+		return err
+	}
+
+	// create the clusters
 	logger := kindcmd.NewLogger()
 	provider := cluster.NewProvider(
 		cluster.ProviderWithLogger(logger),
 	)
-	// create the clusters
 	for i := 0; i < number; i++ {
 		clusterName := fmt.Sprintf("multi-%s-%d", name, i)
 		// each cluster has its own docker network with the clustername
 		// TODO: hardcoded to IPv4, default MTU and no-masquerade
 		err := docker.CreateNetwork(clusterName, "", 0, false)
+		if err != nil {
+			return err
+		}
+		err = docker.ConnectNetwork(wanem, clusterName)
 		if err != nil {
 			return err
 		}
@@ -108,4 +122,17 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		os.Unsetenv("KIND_EXPERIMENTAL_DOCKER_NETWORK")
 	}
 	return nil
+}
+
+func createWanem(name string) error {
+	containerName := "wan-" + name
+	args := []string{"run",
+		"-d",                    // run in the background
+		"--name", containerName, // well known name
+		dockerWanImage,
+	}
+
+	cmd := exec.Command("docker", args...)
+	return cmd.Run()
+
 }

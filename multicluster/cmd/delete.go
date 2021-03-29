@@ -24,6 +24,7 @@ import (
 
 	"sigs.k8s.io/kind/pkg/cluster"
 	kindcmd "sigs.k8s.io/kind/pkg/cmd"
+	"sigs.k8s.io/kind/pkg/exec"
 
 	"github.com/aojea/kind-networking-plugins/pkg/docker"
 )
@@ -53,6 +54,8 @@ func deleteMultiCluster(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
+
+	deleteWanem(name)
 	logger := kindcmd.NewLogger()
 
 	provider := cluster.NewProvider(
@@ -87,4 +90,9 @@ func deleteMultiCluster(cmd *cobra.Command) error {
 	}
 	// TODO accumulate errors
 	return nil
+}
+
+func deleteWanem(name string) error {
+	containerName := "wan-" + name
+	return exec.Command("docker", "rm", "-f", containerName).Run()
 }
