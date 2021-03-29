@@ -94,12 +94,14 @@ func configureMultiCluster(cmd *cobra.Command) error {
 	for i := 0; i < number; i++ {
 		clusterName := fmt.Sprintf("multi-%s-%d", name, i)
 		// each cluster has its own docker network with the clustername
-		// TODO: hardcoded to IPv4, default MTU and no-masquerade
-		err := docker.CreateNetwork(clusterName, "", 0, false)
+		// TODO: remove this hack to create custom subnets
+		subnet := fmt.Sprintf("10.10.%d.0/24", i)
+		gateway := fmt.Sprintf("10.10.%d.254", i)
+		err := docker.CreateNetwork(clusterName, subnet, false)
 		if err != nil {
 			return err
 		}
-		err = docker.ConnectNetwork(wanem, clusterName)
+		err = docker.ConnectNetwork(wanem, clusterName, gateway)
 		if err != nil {
 			return err
 		}
@@ -120,6 +122,19 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		}
 		// reset the env variable
 		os.Unsetenv("KIND_EXPERIMENTAL_DOCKER_NETWORK")
+		// change the default network in all nodes
+		// to use the wanem container and provide
+		// connectivity between clusters
+		nodes, err := provider.ListNodes(clusterName)
+		if err != nil {
+			return err
+		}
+		for _, n := range nodes {
+			err := docker.ReplaceGateway(n.String(), gateway)
+			if err != nil {
+				return err
+			}
+		}
 	}
 	return nil
 }

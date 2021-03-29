@@ -2,8 +2,11 @@ package docker
 
 import (
 	"fmt"
+	"net"
 	"runtime"
+	"strconv"
 
+	"github.com/pkg/errors"
 	"github.com/vishvananda/netlink"
 	"github.com/vishvananda/netns"
 
@@ -11,21 +14,22 @@ import (
 )
 
 // CreateNetwork create a docker network with the passed parameters
-func CreateNetwork(name, ipv6Subnet string, mtu int, masquerade bool) error {
+func CreateNetwork(name, subnet string, masquerade bool) error {
 	args := []string{"network", "create", "-d=bridge"}
-
 	// set the interface name, if not set it defaults to "br-" + id[:12]
 	args = append(args, "-o", fmt.Sprintf("com.docker.network.bridge.name=%s", "br-"+name[:12]))
 	// enable docker iptables rules to masquerade network traffic
 	args = append(args, "-o", fmt.Sprintf("com.docker.network.bridge.enable_ip_masquerade=%t", masquerade))
-
-	if mtu > 0 {
-		args = append(args, "-o", fmt.Sprintf("com.docker.network.driver.mtu=%d", mtu))
+	// configure the subnet and the gateway provided
+	args = append(args, "--subnet", subnet)
+	// and only allocate ips for the containers for the first 32 ips /27
+	_, cidr, err := net.ParseCIDR(subnet)
+	if err != nil {
+		return err
 	}
-	if ipv6Subnet != "" {
-		args = append(args, "--ipv6", "--subnet", ipv6Subnet)
-	}
-	args = append(args, name)
+	m := net.CIDRMask(27, 32)
+	cidr.Mask = m
+	args = append(args, "--ip-range", cidr.String(), name)
 	return exec.Command("docker", args...).Run()
 }
 
@@ -50,7 +54,11 @@ func GetContainerHostIfacesIndex(name string) ([]string, error) {
 	defer origns.Close()
 
 	// get docker namespace
-	ns, err := netns.GetFromDocker(name)
+	pid, err := getContainerPid(name)
+	if err != nil {
+		return nil, err
+	}
+	ns, err := netns.GetFromPid(pid)
 	if err != nil {
 		return nil, err
 	}
@@ -97,8 +105,62 @@ func ListNetwork() ([]string, error) {
 	return exec.OutputLines(cmd)
 }
 
-func ConnectNetwork(nameOrId, network string) error {
+func ConnectNetwork(nameOrId, network, ip string) error {
 	cmd := exec.Command("docker", "network", "connect",
-		network, nameOrId)
+		"--ip", ip, network, nameOrId)
 	return cmd.Run()
+}
+
+func ReplaceGateway(name, gateway string) error {
+	gw := net.ParseIP(gateway)
+	// TODO: support IPv6
+	if gw.To4() == nil {
+		return fmt.Errorf("unsupported IP %s", gateway)
+	}
+	runtime.LockOSThread()
+	defer runtime.UnlockOSThread()
+
+	pid, err := getContainerPid(name)
+	if err != nil {
+		return err
+	}
+	ns, err := netns.GetFromPid(pid)
+	if err != nil {
+		return err
+	}
+	defer ns.Close()
+	// Swith to the docker namespace to get the container interfaces
+	if err := netns.Set(ns); err != nil {
+		return err
+	}
+
+	defaultRoute := &netlink.Route{
+		Dst: nil,
+		Gw:  gw,
+	}
+	return netlink.RouteReplace(defaultRoute)
+}
+
+func getContainerId(name string) (string, error) {
+	cmd := exec.Command("docker", "inspect",
+		"--format", `{{ .Id }}`, name)
+	lines, err := exec.OutputLines(cmd)
+	if err != nil || len(lines) != 1 {
+		return "", errors.Wrapf(err, "error trying to get container %s id", name)
+	}
+	return lines[0], nil
+}
+
+func getContainerPid(name string) (int, error) {
+	cmd := exec.Command("docker", "inspect",
+		"--format", `{{ .State.Pid }}`, name)
+	lines, err := exec.OutputLines(cmd)
+	if err != nil || len(lines) != 1 {
+		return 0, errors.Wrapf(err, "error trying to get container %s id", name)
+	}
+	pid, err := strconv.Atoi(lines[0])
+	if err != nil {
+		return 0, err
+	}
+	return pid, nil
 }
