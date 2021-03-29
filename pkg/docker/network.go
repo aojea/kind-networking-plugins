@@ -90,3 +90,9 @@ func GetContainerHostIfacesIndex(name string) ([]string, error) {
 	}
 	return ifaces, nil
 }
+
+func ListNetwork() ([]string, error) {
+	cmd := exec.Command("docker", "network", "list",
+		"--format", `{{ .Name }}`)
+	return exec.OutputLines(cmd)
+}
