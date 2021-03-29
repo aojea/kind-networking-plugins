@@ -23,6 +23,7 @@ import (
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 
+	"sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 	"sigs.k8s.io/kind/pkg/cluster"
 	kindcmd "sigs.k8s.io/kind/pkg/cmd"
 	"sigs.k8s.io/kind/pkg/exec"
@@ -91,6 +92,7 @@ func configureMultiCluster(cmd *cobra.Command) error {
 	provider := cluster.NewProvider(
 		cluster.ProviderWithLogger(logger),
 	)
+
 	for i := 0; i < number; i++ {
 		clusterName := fmt.Sprintf("multi-%s-%d", name, i)
 		// each cluster has its own docker network with the clustername
@@ -107,10 +109,25 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		}
 		// use the new created docker network
 		os.Setenv("KIND_EXPERIMENTAL_DOCKER_NETWORK", clusterName)
+		podSubnet := fmt.Sprintf("10.10%d.0.0/16", i)
+		svcSubnet := fmt.Sprintf("10.96.%d.0/24", i)
+		config := &v1alpha4.Cluster{
+			Name: clusterName,
+			Nodes: []v1alpha4.Node{
+				{
+					Role: v1alpha4.ControlPlaneRole,
+				},
+			},
+			Networking: v1alpha4.Networking{
+				PodSubnet:     podSubnet,
+				ServiceSubnet: svcSubnet,
+			},
+		}
+
 		// create the cluster
 		if err := provider.Create(
 			clusterName,
-			cluster.CreateWithRawConfig([]byte(rawConfig)),
+			cluster.CreateWithV1Alpha4Config(config),
 			// cluster.CreateWithNodeImage(flags.ImageName),
 			// cluster.CreateWithRetain(flags.Retain),
 			// cluster.CreateWithWaitForReady(flags.Wait),
