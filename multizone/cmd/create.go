@@ -94,6 +94,10 @@ func createMultiZone(cmd *cobra.Command) error {
 	config := &v1alpha4.Cluster{
 		Name:  name,
 		Nodes: createNodes(zones, nodeZones),
+		// We want TopologyHints to test multizone available in 1.22+
+		FeatureGates: map[string]bool{
+			"TopologyAwareHints": true,
+		},
 	}
 
 	// create the cluster
@@ -124,6 +128,7 @@ func createNodes(zones, nodesZone int) []v1alpha4.Node {
 			Labels: map[string]string{
 				topologyLabel: "zone0",
 			},
+			Image: "aojea/kindnode:1.22rc",
 		},
 	}
 	// TODO we use only one control plane per zone
@@ -131,7 +136,8 @@ func createNodes(zones, nodesZone int) []v1alpha4.Node {
 	for i := 0; i < zones; i++ {
 		for j := 0; j < nodesZone; j++ {
 			n := v1alpha4.Node{
-				Role: v1alpha4.WorkerRole,
+				Role:  v1alpha4.WorkerRole,
+				Image: "aojea/kindnode:1.22rc",
 				Labels: map[string]string{
 					topologyLabel: fmt.Sprintf("zone%d", i),
 				},
