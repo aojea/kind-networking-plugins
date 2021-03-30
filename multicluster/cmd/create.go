@@ -46,11 +46,10 @@ var createCmd = &cobra.Command{
 	Use:   "create",
 	Short: "Create a deployment with multiple KIND clusters",
 	Long: `Create a deployment with multiple KIND clusters based on the configuration
-	passed as parameters.
-	
-	Multicluster deployment create KIND clusters in independent bridges, that are connected
-	through an special container that handles the routing and the WAN emulation.
-	`,
+passed as parameters.
+
+Multicluster deployment create KIND clusters in independent bridges, that are connected
+through an special container that handles the routing and the WAN emulation.`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return configureMultiCluster(cmd)
 	},
