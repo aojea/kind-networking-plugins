@@ -107,8 +107,12 @@ func ListNetwork() ([]string, error) {
 }
 
 func ConnectNetwork(nameOrId, network, ip string) error {
-	cmd := exec.Command("docker", "network", "connect",
-		"--ip", ip, network, nameOrId)
+	args := []string{"network", "connect"}
+	if ip != "" {
+		args = append(args, "--ip", ip)
+	}
+	args = append(args, network, nameOrId)
+	cmd := exec.Command("docker", args...)
 	return cmd.Run()
 }
 
