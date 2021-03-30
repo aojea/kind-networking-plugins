@@ -16,20 +16,21 @@ import (
 // CreateNetwork create a docker network with the passed parameters
 func CreateNetwork(name, subnet string, masquerade bool) error {
 	args := []string{"network", "create", "-d=bridge"}
-	// set the interface name, if not set it defaults to "br-" + id[:12]
-	args = append(args, "-o", fmt.Sprintf("com.docker.network.bridge.name=%s", "br-"+name[:12]))
 	// enable docker iptables rules to masquerade network traffic
 	args = append(args, "-o", fmt.Sprintf("com.docker.network.bridge.enable_ip_masquerade=%t", masquerade))
 	// configure the subnet and the gateway provided
-	args = append(args, "--subnet", subnet)
-	// and only allocate ips for the containers for the first 32 ips /27
-	_, cidr, err := net.ParseCIDR(subnet)
-	if err != nil {
-		return err
+	if subnet != "" {
+		args = append(args, "--subnet", subnet)
+		// and only allocate ips for the containers for the first 32 ips /27
+		_, cidr, err := net.ParseCIDR(subnet)
+		if err != nil {
+			return err
+		}
+		m := net.CIDRMask(27, 32)
+		cidr.Mask = m
+		args = append(args, "--ip-range", cidr.String())
 	}
-	m := net.CIDRMask(27, 32)
-	cidr.Mask = m
-	args = append(args, "--ip-range", cidr.String(), name)
+	args = append(args, name)
 	return exec.Command("docker", args...).Run()
 }
 
@@ -163,4 +164,15 @@ func getContainerPid(name string) (int, error) {
 		return 0, err
 	}
 	return pid, nil
+}
+
+func GetNetworkInterface(name string) (string, error) {
+	cmd := exec.Command("docker", "network", "inspect",
+		"--format", `{{ .Id }}`, name)
+	lines, err := exec.OutputLines(cmd)
+	if err != nil || len(lines) != 1 {
+		return "", errors.Wrapf(err, "error trying to get network %s id", name)
+	}
+	id := lines[0]
+	return "br-" + id[:12], nil
 }
