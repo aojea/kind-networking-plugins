@@ -36,7 +36,8 @@ var createCmd = &cobra.Command{
 	Short: "Create a baremetal cluster",
 	Long: `Create a baremetal cluster.
 
-A multizon cluster has nodes in different availability zones`,
+Create multiple network and interfaces on the nodes, that may
+be used to have dedicated network for storage, external servoces, ...`,
 	RunE: func(cmd *cobra.Command, args []string) error {
 		return createBareMetal(cmd)
 	},
