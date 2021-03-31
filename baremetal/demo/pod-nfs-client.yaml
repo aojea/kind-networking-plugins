@@ -1,0 +1,19 @@
+kind: Pod
+apiVersion: v1
+metadata:
+  name: pod-using-nfs
+spec:
+  volumes:
+    - name: nfs-volume
+      nfs: 
+        server: nfs
+        path: /
+  containers:
+    - name: app
+      image: alpine
+      volumeMounts:
+        - name: nfs-volume
+          mountPath: /var/nfs
+      command: ["/bin/sh"]
+      args: ["-c", "while true; do date >> /var/nfs/dates.txt; sleep 5; done"]
+
