@@ -7,3 +7,6 @@ docker run -d --name nfs --privileged --network bm-kind-1 -v /tmp/nfsshare:/nfss
 kubectl apply -f pod-nfs-client.yaml 
 # verify from the host that the pod uses the volume
 cat /tmp/nfsshare/dates.txt 
+# clean all
+docker rm -f nfs
+./baremetal delete
