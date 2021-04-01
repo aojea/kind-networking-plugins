@@ -31,16 +31,6 @@ import (
 
 const dockerWanImage = "quay.io/aojea/wanem:latest"
 
-const rawConfig = `
-# three node (two workers) cluster config
-kind: Cluster
-apiVersion: kind.x-k8s.io/v1alpha4
-networking:
-  ipFamily: ipv4
-nodes:
-- role: control-plane
-`
-
 // createCmd represents the create command
 var createCmd = &cobra.Command{
 	Use:   "create",
