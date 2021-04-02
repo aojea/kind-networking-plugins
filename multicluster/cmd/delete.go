@@ -16,7 +16,6 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"strings"
 
 	"github.com/pkg/errors"
@@ -47,10 +46,25 @@ func init() {
 		cluster.DefaultName,
 		"the multicluster context name",
 	)
+
+	deleteCmd.Flags().String(
+		"config",
+		"./config.yml",
+		"the config file with the cluster configuration",
+	)
+	deleteCmd.MarkFlagRequired("config")
 }
 
 func deleteMultiCluster(cmd *cobra.Command) error {
 	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	configPath, err := cmd.Flags().GetString("config")
+	if err != nil {
+		return err
+	}
+	cfg, err := NewConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -66,25 +80,27 @@ func deleteMultiCluster(cmd *cobra.Command) error {
 		return err
 	}
 
-	clusterNamePrefix := fmt.Sprintf("multi-%s-", name)
-	for _, cluster := range clusters {
-		if strings.Contains(cluster, clusterNamePrefix) {
-			if err = provider.Delete(cluster, ""); err != nil {
-				logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete cluster %q", cluster))
-				continue
+	for clusterName, _ := range cfg.Clusters {
+
+		for _, cluster := range clusters {
+			if strings.Contains(cluster, clusterName) {
+				if err = provider.Delete(cluster, ""); err != nil {
+					logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete cluster %q", cluster))
+					continue
+				}
+				logger.V(0).Infof("Deleted clusters: %q", cluster)
 			}
-			logger.V(0).Infof("Deleted clusters: %q", cluster)
 		}
-	}
-	networks, err := docker.ListNetwork()
-	if err != nil {
-		return err
-	}
-	for _, network := range networks {
-		if strings.Contains(network, clusterNamePrefix) {
-			if err = docker.DeleteNetwork(network); err != nil {
-				logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete network %q", network))
-				continue
+		networks, err := docker.ListNetwork()
+		if err != nil {
+			return err
+		}
+		for _, network := range networks {
+			if strings.Contains(network, clusterName) {
+				if err = docker.DeleteNetwork(network); err != nil {
+					logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete network %q", network))
+					continue
+				}
 			}
 		}
 	}

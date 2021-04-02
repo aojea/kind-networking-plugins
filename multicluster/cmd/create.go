@@ -16,10 +16,10 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/aojea/kind-networking-plugins/pkg/docker"
+	"github.com/aojea/kind-networking-plugins/pkg/network"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
 	"gopkg.in/yaml.v2"
@@ -34,11 +34,11 @@ const dockerWanImage = "quay.io/aojea/wanem:latest"
 
 // Config struct for multicluster config
 type Config struct {
-	Name     string                    `yaml:"name"`
-	Clusters map[string]ClusterNetwork `yaml:"clusters"`
+	Clusters map[string]ClusterConfig `yaml:"clusters"`
 }
 
-type ClusterNetwork struct {
+type ClusterConfig struct {
+	Nodes         int    `yaml:"nodes"`
 	NodeSubnet    string `yaml:"nodeSubnet"`
 	PodSubnet     string `yaml:"podSubnet"`
 	ServiceSubnet string `yaml:"serviceSubnet"`
@@ -83,6 +83,13 @@ through an special container that handles the routing and the WAN emulation.`,
 
 func init() {
 	rootCmd.AddCommand(createCmd)
+
+	createCmd.Flags().String(
+		"name",
+		cluster.DefaultName,
+		"the multicluster context name",
+	)
+
 	createCmd.Flags().String(
 		"config",
 		"./config.yml",
@@ -92,6 +99,10 @@ func init() {
 }
 
 func configureMultiCluster(cmd *cobra.Command) error {
+	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
 	configPath, err := cmd.Flags().GetString("config")
 	if err != nil {
 		return err
@@ -101,7 +112,6 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		return err
 	}
 
-	name := cfg.Name
 	// create the container to emulate the WAN network
 	wanem := "wan-" + name
 	err = createWanem(name)
@@ -115,30 +125,30 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		cluster.ProviderWithLogger(logger),
 	)
 
-	for clusterName, clusterNetworks := range cfg.Clusters {
+	for clusterName, clusterConfig := range cfg.Clusters {
 		// each cluster has its own docker network with the clustername
-		subnet := clusterNetworks.NodeSubnet
+		subnet := clusterConfig.NodeSubnet
 		err := docker.CreateNetwork(clusterName, subnet, false)
 		if err != nil {
 			return err
 		}
-		// connect wanem with a known IP that the cluster will use later as gateway
-		gateway := fmt.Sprintf("10.10.%d.254", i)
-		err = docker.ConnectNetwork(wanem, clusterName, gateway)
+		// connect wanem with the last IP of the range
+		// that the cluster will use later as gateway
+		gateway, err := network.GetLastIPSubnet(subnet)
+		if err != nil {
+			return err
+		}
+		err = docker.ConnectNetwork(wanem, clusterName, gateway.String())
 		if err != nil {
 			return err
 		}
 		// use the new created docker network
 		os.Setenv("KIND_EXPERIMENTAL_DOCKER_NETWORK", clusterName)
-		podSubnet := clusterNetworks.PodSubnet
-		svcSubnet := clusterNetworks.ServiceSubnet
+		podSubnet := clusterConfig.PodSubnet
+		svcSubnet := clusterConfig.ServiceSubnet
 		config := &v1alpha4.Cluster{
-			Name: clusterName,
-			Nodes: []v1alpha4.Node{
-				{
-					Role: v1alpha4.ControlPlaneRole,
-				},
-			},
+			Name:  clusterName,
+			Nodes: createNodes(clusterConfig.Nodes),
 			Networking: v1alpha4.Networking{
 				PodSubnet:     podSubnet,
 				ServiceSubnet: svcSubnet,
@@ -168,11 +178,21 @@ func configureMultiCluster(cmd *cobra.Command) error {
 			return err
 		}
 		for _, n := range nodes {
-			err := docker.ReplaceGateway(n.String(), gateway)
+			err := docker.ReplaceGateway(n.String(), gateway.String())
 			if err != nil {
 				return err
 			}
 		}
+		// insert routes in wanem to reach services through one of the nodes
+		ipv4, _, err := nodes[0].IP()
+		if err != nil {
+			return err
+		}
+		err = addRoutesWanem(name, ipv4, svcSubnet, podSubnet)
+		if err != nil {
+			return err
+		}
+
 	}
 	return nil
 }
@@ -194,8 +214,37 @@ func createWanem(name string) error {
 	}
 	// configure masquerading so clusters can reach internet
 	args = []string{"exec", containerName,
-		"iptables", " -t", "nat", "-A", "POSTROUTING", "-o", "eth0", "-j", " MASQUERADE",
+		"iptables", "-t", "nat", "-A", "POSTROUTING", "-o", "eth0", "-j", "MASQUERADE",
 	}
 	cmd = exec.Command("docker", args...)
 	return cmd.Run()
+}
+
+func addRoutesWanem(name, gateway string, subnets ...string) error {
+	for _, subnet := range subnets {
+		args := []string{"exec", "wan-" + name,
+			"ip", "route", "add", subnet, "via", gateway,
+		}
+		cmd := exec.Command("docker", args...)
+		if err := cmd.Run(); err != nil {
+			return err
+		}
+	}
+	return nil
+}
+
+func createNodes(n int) []v1alpha4.Node {
+	nodes := []v1alpha4.Node{
+		{
+			Role: v1alpha4.ControlPlaneRole,
+		},
+	}
+
+	for j := 1; j < n; j++ {
+		n := v1alpha4.Node{
+			Role: v1alpha4.WorkerRole,
+		}
+		nodes = append(nodes, n)
+	}
+	return nodes
 }
