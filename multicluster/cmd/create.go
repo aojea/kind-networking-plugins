@@ -22,6 +22,7 @@ import (
 	"github.com/aojea/kind-networking-plugins/pkg/docker"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 	"sigs.k8s.io/kind/pkg/cluster"
@@ -30,6 +31,41 @@ import (
 )
 
 const dockerWanImage = "quay.io/aojea/wanem:latest"
+
+// Config struct for multicluster config
+type Config struct {
+	Name     string                    `yaml:"name"`
+	Clusters map[string]ClusterNetwork `yaml:"clusters"`
+}
+
+type ClusterNetwork struct {
+	NodeSubnet    string `yaml:"nodeSubnet"`
+	PodSubnet     string `yaml:"podSubnet"`
+	ServiceSubnet string `yaml:"serviceSubnet"`
+}
+
+// NewConfig returns a new decoded Config struct
+func NewConfig(configPath string) (*Config, error) {
+	// Create config structure
+	config := &Config{}
+
+	// Open config file
+	file, err := os.Open(configPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Init new YAML decode
+	d := yaml.NewDecoder(file)
+
+	// Start YAML decoding from file
+	if err := d.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
@@ -47,28 +83,25 @@ through an special container that handles the routing and the WAN emulation.`,
 
 func init() {
 	rootCmd.AddCommand(createCmd)
-
 	createCmd.Flags().String(
-		"name",
-		cluster.DefaultName,
-		"the multicluster context name",
+		"config",
+		"./config.yml",
+		"the config file with the cluster configuration",
 	)
-	createCmd.Flags().Int(
-		"number",
-		2,
-		"the number of clusters (default 2)",
-	)
+	createCmd.MarkFlagRequired("config")
 }
 
 func configureMultiCluster(cmd *cobra.Command) error {
-	name, err := cmd.Flags().GetString("name")
+	configPath, err := cmd.Flags().GetString("config")
 	if err != nil {
 		return err
 	}
-	number, err := cmd.Flags().GetInt("number")
+	cfg, err := NewConfig(configPath)
 	if err != nil {
 		return err
 	}
+
+	name := cfg.Name
 	// create the container to emulate the WAN network
 	wanem := "wan-" + name
 	err = createWanem(name)
@@ -82,24 +115,23 @@ func configureMultiCluster(cmd *cobra.Command) error {
 		cluster.ProviderWithLogger(logger),
 	)
 
-	for i := 0; i < number; i++ {
-		clusterName := fmt.Sprintf("multi-%s-%d", name, i)
+	for clusterName, clusterNetworks := range cfg.Clusters {
 		// each cluster has its own docker network with the clustername
-		// TODO: remove this hack to create custom subnets
-		subnet := fmt.Sprintf("10.10.%d.0/24", i)
-		gateway := fmt.Sprintf("10.10.%d.254", i)
+		subnet := clusterNetworks.NodeSubnet
 		err := docker.CreateNetwork(clusterName, subnet, false)
 		if err != nil {
 			return err
 		}
+		// connect wanem with a known IP that the cluster will use later as gateway
+		gateway := fmt.Sprintf("10.10.%d.254", i)
 		err = docker.ConnectNetwork(wanem, clusterName, gateway)
 		if err != nil {
 			return err
 		}
 		// use the new created docker network
 		os.Setenv("KIND_EXPERIMENTAL_DOCKER_NETWORK", clusterName)
-		podSubnet := fmt.Sprintf("10.10%d.0.0/16", i)
-		svcSubnet := fmt.Sprintf("10.96.%d.0/24", i)
+		podSubnet := clusterNetworks.PodSubnet
+		svcSubnet := clusterNetworks.ServiceSubnet
 		config := &v1alpha4.Cluster{
 			Name: clusterName,
 			Nodes: []v1alpha4.Node{
