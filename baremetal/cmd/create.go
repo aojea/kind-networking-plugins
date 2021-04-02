@@ -16,19 +16,46 @@ limitations under the License.
 package cmd
 
 import (
-	"fmt"
 	"os"
 
 	"github.com/aojea/kind-networking-plugins/pkg/docker"
 	"github.com/pkg/errors"
 	"github.com/spf13/cobra"
+	"gopkg.in/yaml.v2"
 
 	"sigs.k8s.io/kind/pkg/apis/config/v1alpha4"
 	"sigs.k8s.io/kind/pkg/cluster"
 	kindcmd "sigs.k8s.io/kind/pkg/cmd"
 )
 
-const topologyLabel = "topology.kubernetes.io/zone"
+// Config struct for multicluster config
+type Config struct {
+	Cluster  v1alpha4.Cluster `yaml:"cluster"`
+	Networks []string         `yaml:"networks"`
+}
+
+// NewConfig returns a new decoded Config struct
+func NewConfig(configPath string) (*Config, error) {
+	// Create config structure
+	config := &Config{}
+
+	// Open config file
+	file, err := os.Open(configPath)
+	if err != nil {
+		return nil, err
+	}
+	defer file.Close()
+
+	// Init new YAML decode
+	d := yaml.NewDecoder(file)
+
+	// Start YAML decoding from file
+	if err := d.Decode(&config); err != nil {
+		return nil, err
+	}
+
+	return config, nil
+}
 
 // createCmd represents the create command
 var createCmd = &cobra.Command{
@@ -51,16 +78,12 @@ func init() {
 		cluster.DefaultName,
 		"the multicluster context name",
 	)
-	createCmd.Flags().Int(
-		"interfaces",
-		2,
-		"the number of interfaces per node (default 2)",
+	createCmd.Flags().String(
+		"config",
+		"./config.yml",
+		"the config file with the cluster configuration",
 	)
-	createCmd.Flags().Int(
-		"nodes",
-		2,
-		"the number of nodes (default 2)",
-	)
+	createCmd.MarkFlagRequired("config")
 }
 
 func createBareMetal(cmd *cobra.Command) error {
@@ -68,11 +91,11 @@ func createBareMetal(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	interfaces, err := cmd.Flags().GetInt("interfaces")
+	configPath, err := cmd.Flags().GetString("config")
 	if err != nil {
 		return err
 	}
-	nNodes, err := cmd.Flags().GetInt("nodes")
+	cfg, err := NewConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -93,15 +116,10 @@ func createBareMetal(cmd *cobra.Command) error {
 	// use the new created docker network
 	os.Setenv("KIND_EXPERIMENTAL_DOCKER_NETWORK", clusterNetwork)
 
-	config := &v1alpha4.Cluster{
-		Name:  name,
-		Nodes: createNodes(nNodes),
-	}
-
 	// create the cluster
 	if err := provider.Create(
 		name,
-		cluster.CreateWithV1Alpha4Config(config),
+		cluster.CreateWithV1Alpha4Config(&cfg.Cluster),
 		// cluster.CreateWithNodeImage(flags.ImageName),
 		// cluster.CreateWithRetain(flags.Retain),
 		// cluster.CreateWithWaitForReady(flags.Wait),
@@ -118,8 +136,7 @@ func createBareMetal(cmd *cobra.Command) error {
 	if err != nil {
 		return err
 	}
-	for i := 1; i < interfaces; i++ {
-		networkName := fmt.Sprintf("%s-%d", clusterNetwork, i)
+	for _, networkName := range cfg.Networks {
 		err = docker.CreateNetwork(networkName, "", false)
 		if err != nil {
 			return err

@@ -43,10 +43,25 @@ func init() {
 		cluster.DefaultName,
 		"the multicluster context name",
 	)
+
+	deleteCmd.Flags().String(
+		"config",
+		"./config.yml",
+		"the config file with the cluster configuration",
+	)
+	deleteCmd.MarkFlagRequired("config")
 }
 
 func deleteBareMetal(cmd *cobra.Command) error {
 	name, err := cmd.Flags().GetString("name")
+	if err != nil {
+		return err
+	}
+	configPath, err := cmd.Flags().GetString("config")
+	if err != nil {
+		return err
+	}
+	cfg, err := NewConfig(configPath)
 	if err != nil {
 		return err
 	}
@@ -77,7 +92,8 @@ func deleteBareMetal(cmd *cobra.Command) error {
 		return err
 	}
 	for _, network := range networks {
-		if strings.Contains(network, clusterNamePrefix) {
+		if strings.Contains(network, clusterNamePrefix) ||
+			sliceContains(cfg.Networks, network) {
 			if err = docker.DeleteNetwork(network); err != nil {
 				logger.V(0).Infof("%s\n", errors.Wrapf(err, "failed to delete network %q", network))
 				continue
@@ -86,4 +102,13 @@ func deleteBareMetal(cmd *cobra.Command) error {
 	}
 	// TODO accumulate errors
 	return nil
+}
+
+func sliceContains(slice []string, a string) bool {
+	for _, s := range slice {
+		if a == s {
+			return true
+		}
+	}
+	return false
 }
