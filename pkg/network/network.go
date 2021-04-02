@@ -1,6 +1,8 @@
 package network
 
 import (
+	"net"
+
 	"github.com/vishvananda/netlink"
 )
 
@@ -38,4 +40,13 @@ func DeleteInterface(name string) error {
 		return err
 	}
 	return netlink.LinkDel(link)
+}
+
+func getLastIPSubnet(cidr string) (net.IP, error) {
+	ip, ipnet, err := net.ParseCIDR(cidr)
+	if err != nil {
+		return nil, err
+	}
+
+	return ip, nil
 }
