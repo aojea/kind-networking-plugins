@@ -95,7 +95,7 @@ var _ = ginkgo.Describe("Topology Aware Hints", func() {
 		framework.ExpectNoError(err)
 
 		zones := map[string]int{}
-		cmd := fmt.Sprintf(`echo hostName | nc -v -t -w 2 %s %d`, svcIP, port)
+		cmd := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
 		for i := 0; i < 100; i++ {
 			hostname, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
 			if err == nil && hostname != "" {
@@ -170,7 +170,7 @@ var _ = ginkgo.Describe("Topology Aware Hints", func() {
 		err = jig.CheckServiceReachability(svc, execPod)
 		framework.ExpectNoError(err)
 		zones := map[string]int{}
-		cmd := fmt.Sprintf(`echo hostName | nc -v -t -w 2 %s %d`, svcIP, port)
+		cmd := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
 		for i := 0; i < 100; i++ {
 			hostname, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
 			if err == nil && hostname != "" {
