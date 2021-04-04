@@ -3,6 +3,7 @@ package e2e
 import (
 	"context"
 	"fmt"
+	"strings"
 	"time"
 
 	"github.com/onsi/ginkgo"
@@ -95,19 +96,28 @@ var _ = ginkgo.Describe("Topology Aware Hints", func() {
 		framework.ExpectNoError(err)
 
 		zones := map[string]int{}
-		cmd := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
-		for i := 0; i < 100; i++ {
-			hostname, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
-			if err == nil && hostname != "" {
-				z, ok := podsZones[hostname]
-				if !ok {
-					framework.Failf("hostname %s not in any zone", hostname)
-				}
+		nc := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
+		cmd := fmt.Sprintf("for i in $(seq 0 100); do echo; %s ; sleep 0.1 ; done", nc)
+		stdout, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
+		framework.ExpectNoError(err)
+
+		hostnames := strings.Split(stdout, "\n")
+		failed := 0
+		for _, h := range hostnames {
+			z, ok := podsZones[h]
+			if ok {
 				zones[z]++
+			} else {
+				failed++
 			}
 		}
-		framework.Logf("Connections from %v distributed with Topology %v", nodeZone, zones)
-
+		framework.Logf("Connections from %v distributed with Topology %v Failed %d", nodeZone, zones, failed)
+		// Fail if the traffic in the zone is not higher than the 65%
+		// don't consider the failed connections for the stats
+		zoneTraffic := zones[nodeZone] * 100 / (100 - failed)
+		if zoneTraffic < 65 {
+			framework.Failf("Traffic within the zone is lower than 65 per cent : %d", zoneTraffic)
+		}
 	})
 
 	ginkgo.It("Services without topology annotation should forward traffic to nodes on all zones", func() {
@@ -170,16 +180,29 @@ var _ = ginkgo.Describe("Topology Aware Hints", func() {
 		err = jig.CheckServiceReachability(svc, execPod)
 		framework.ExpectNoError(err)
 		zones := map[string]int{}
-		cmd := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
-		for i := 0; i < 100; i++ {
-			hostname, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
-			if err == nil && hostname != "" {
-				framework.Logf("Connected to hostname %s", hostname)
-				z := podsZones[hostname]
+		nc := fmt.Sprintf(`echo hostName | nc -v -w 5 %s %d`, svcIP, port)
+		cmd := fmt.Sprintf("for i in $(seq 0 100); do echo; %s ; sleep 0.1 ; done", nc)
+		stdout, err := framework.RunHostCmd(execPod.Namespace, execPod.Name, cmd)
+		framework.ExpectNoError(err)
+
+		hostnames := strings.Split(stdout, "\n")
+		failed := 0
+		for _, h := range hostnames {
+			z, ok := podsZones[h]
+			if ok {
 				zones[z]++
+			} else {
+				failed++
 			}
 		}
-		framework.Logf("Connections from %s distributed without topology %v", nodeZone, zones)
+		framework.Logf("Connections from %s distributed without topology %v Failed %d", nodeZone, zones, failed)
+		// Fail if traffic per zone is not equally distributed [40%,60%]
+		// Fail if the traffic in the zone is not higher than the 65%
+		// don't consider the failed connections for the stats
+		zoneTraffic := zones[nodeZone] * 100 / (100 - failed)
+		if zoneTraffic < 40 || zoneTraffic > 60 {
+			framework.Failf("Traffic within the zone %s is lower than 40 or greater than 60 per cent : %d", nodeZone, zoneTraffic)
+		}
 
 	})
 
