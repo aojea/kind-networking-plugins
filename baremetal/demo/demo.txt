@@ -2,7 +2,9 @@
 ./baremetal create
 # create an external nfs server in the storage networks
 mkdir /tmp/nfsshare
-docker run -d --name nfs --privileged --network bm-kind-1 -v /tmp/nfsshare:/nfsshare -e SHARED_DIRECTORY=/nfsshare itsthenetwork/nfs-server-alpine:latest
+docker run -d --name nfs --privileged --network storage \
+    -v /tmp/nfsshare:/nfsshare -e SHARED_DIRECTORY=/nfsshare \
+    itsthenetwork/nfs-server-alpine:latest
 # create a pod in the cluster that consumes the nfs volume
 kubectl apply -f pod-nfs-client.yaml 
 # verify from the host that the pod uses the volume
