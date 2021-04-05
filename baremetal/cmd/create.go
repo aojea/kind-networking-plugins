@@ -151,20 +151,3 @@ func createBareMetal(cmd *cobra.Command) error {
 
 	return nil
 }
-
-func createNodes(n int) []v1alpha4.Node {
-	nodes := []v1alpha4.Node{
-		{
-			Role: v1alpha4.ControlPlaneRole,
-		},
-	}
-	// TODO we use only one control plane per zone
-	// because we are interested on the workers nodes by now
-	for i := 1; i < n; i++ {
-		node := v1alpha4.Node{
-			Role: v1alpha4.WorkerRole,
-		}
-		nodes = append(nodes, node)
-	}
-	return nodes
-}
