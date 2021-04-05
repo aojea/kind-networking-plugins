@@ -202,6 +202,7 @@ func createWanem(name string) error {
 	args := []string{"run",
 		"-d", // run in the background
 		"--sysctl=net.ipv4.ip_forward=1",
+		"--sysctl=net.ipv4.conf.all.rp_filter=0",
 		"--privileged",
 		"--name", containerName, // well known name
 		dockerWanImage,
