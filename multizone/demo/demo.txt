@@ -1,0 +1,43 @@
+
+./multizone create --zones 2 --nodes-zone 1
+
+# Create a deployment
+kubectl apply -f https://k8s.io/examples/controllers/nginx-deployment.yaml
+
+# Expose it
+kubectl expose deployment.apps/nginx-deployment
+
+# check the topology hints
+kubectl get endpointslices nginx-deployment-r4jg5  \
+    -o go-template='{{range .endpoints}}{{index .targetRef "name"}} {{.zone}} {{.hints}}{{"\n"}}{{end}}'
+
+# annotate the service and enable topology
+kubectl annotate service nginx-deployment service.kubernetes.io/topology-aware-hints=auto
+
+# check the topology hints
+kubectl get endpointslices nginx-deployment-r4jg5  \
+    -o go-template='{{range .endpoints}}{{index .targetRef "name"}} {{.zone}} {{.hints}}{{"\n"}}{{end}}'
+
+# Scale the deployment down
+kubectl scale --replicas=1 deployment.apps/nginx-deployment
+
+# check the topology hints
+kubectl get endpointslices nginx-deployment-r4jg5  \
+    -o go-template='{{range .endpoints}}{{index .targetRef "name"}} {{.zone}} {{.hints}}{{"\n"}}{{end}}'
+
+# Scale the deployment up
+kubectl scale --replicas=6 deployment.apps/nginx-deployment
+
+# check the topology hints
+kubectl get endpointslices nginx-deployment-r4jg5  \
+    -o go-template='{{range .endpoints}}{{index .targetRef "name"}} {{.zone}} {{.hints}}{{"\n"}}{{end}}'
+
+# disabled
+kubectl annotate service nginx-deployment service.kubernetes.io/topology-aware-hints=disabled --overwrite 
+
+# check the topology hints
+kubectl get endpointslices nginx-deployment-r4jg5  \
+    -o go-template='{{range .endpoints}}{{index .targetRef "name"}} {{.zone}} {{.hints}}{{"\n"}}{{end}}'
+
+#
+./multizone delete
