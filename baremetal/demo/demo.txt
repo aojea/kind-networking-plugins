@@ -11,4 +11,5 @@ kubectl apply -f pod-nfs-client.yaml
 cat /tmp/nfsshare/dates.txt 
 # clean all
 docker rm -f nfs
+rm -rf /tmp/nfsshare
 ./baremetal delete

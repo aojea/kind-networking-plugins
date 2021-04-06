@@ -5,15 +5,22 @@ sudo kubectl config view
 sudo kubectl --context kind-cluster-us run iperf --image iitgdocker/iperf-server:2.0.9
 sudo kubectl --context kind-cluster-us get pods
 sudo kubectl --context kind-cluster-us expose pod iperf --port 5001
+# get service IP
 sudo kubectl --context kind-cluster-us get services iperf
+# get nodes ips
+sudo kubectl --context kind-cluster-us get nodes \
+    -o jsonpath='{range .items[*]}{.metadata.name} {.status.addresses[?(@.type=="InternalIP")].address}{"\n"}{end}'
+
 
 # create an iperf client in the eu cluster and connect to the us cluster
 sudo kubectl --context kind-cluster-eu run iperf --image iitgdocker/iperf-server:2.0.9
 sudo kubectl --context kind-cluster-eu exec -it iperf -- ash
 
 # iperf from eu tp the iperf service in us
-iperf -i 1 -c 
+iperf -i 1 -c svcip
+ping nodeip
 
+# check the latency between clusters
 
 # add latency to the WAN
 docker exec -it kind-want bash
@@ -25,8 +32,8 @@ tc qdisc add dev eth2 root netem delay 100ms
 iperf -i 1 -c 
 
 # remove latency from wan
-tc qdisc add del eth1 root netem delay 100ms
-tc qdisc add del eth2 root netem delay 100ms
+tc qdisc del dev eth1 root netem delay 100ms
+tc qdisc del dev eth2 root netem delay 100ms
 
 # rerun iperf and check bw is ok again
 
