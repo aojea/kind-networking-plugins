@@ -16,9 +16,12 @@ kubectl -n monitoring exec $POD_NAME -- tar cvf - /prometheus/snapshots > snapsh
 # touch prometheus.yaml
 
 # init the container mounting the folder with the metrics
+# tar xvf prometheus.tar 
+# prometheus/snapshots/
+# prometheus/snapshots/20210413T203151Z-3f4863bc7872c82f/
 
 #  docker run --rm -p 9090:9090 -uroot \
-#       -v /tmp/prometheus:/prometheus \
+#       -v $PWD/prometheus/snapshots/20210413T203151Z-3f4863bc7872c82f:/prometheus \
 #       -v $PWD/prometheus.yml:/prometheus/prometheus.yml \
 #       prom/prometheus --storage.tsdb.path=/prometheus
 
