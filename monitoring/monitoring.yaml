@@ -81,25 +81,14 @@ data:
 
       - job_name: 'kubernetes-controller-manager'
         honor_labels: true
-        kubernetes_sd_configs:
-        - role: pod
         scheme: https
         tls_config:
           ca_file: /var/run/secrets/kubernetes.io/serviceaccount/ca.crt
+          insecure_skip_verify: true
         bearer_token_file: /var/run/secrets/kubernetes.io/serviceaccount/token
-        relabel_configs:
-        - action: keep
-          source_labels:
-          - __meta_kubernetes_namespace
-          - __meta_kubernetes_pod_name
-          separator: '/'
-          regex: 'kube-system/kube-controller-manager.+'
-        - source_labels:
-          - __address__
-          action: replace
-          target_label: __address__
-          regex: (.+?)(\\:\\d+)?
-          replacement: $1:10257
+        static_configs:
+          - targets:
+            - 127.0.0.1:10257
 
       - job_name: 'kubernetes-nodes'
         scheme: https
@@ -112,7 +101,7 @@ data:
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__
-          replacement: kubernetes.default.svc:443
+          replacement: localhost:6443
         - source_labels: [__meta_kubernetes_node_name]
           regex: (.+)
           target_label: __metrics_path__
@@ -129,7 +118,7 @@ data:
         - action: labelmap
           regex: __meta_kubernetes_node_label_(.+)
         - target_label: __address__
-          replacement: kubernetes.default.svc:443
+          replacement: localhost:6443
         - source_labels: [__meta_kubernetes_node_name]
           regex: (.+)
           target_label: __metrics_path__
@@ -153,42 +142,42 @@ data:
           regex: (.+?)(\\:\\d+)?
           replacement: $1:10249
 ---          
-apiVersion: apps/v1
-kind: Deployment
+apiVersion: v1
+kind: Pod
 metadata:
-  name: prometheus-deployment
+  name: prometheus
   namespace: monitoring
   labels:
     app: prometheus-server
 spec:
-  replicas: 1
-  selector:
-    matchLabels:
-      app: prometheus-server
-  template:
-    metadata:
-      labels:
-        app: prometheus-server
-    spec:
-      containers:
-        - name: prometheus
-          image: prom/prometheus:v2.26.0
-          args:
-            - "--config.file=/etc/prometheus/prometheus.yml"
-            - "--storage.tsdb.path=/prometheus/"
-            - "--web.enable-admin-api"
-          ports:
-            - containerPort: 9090
-          volumeMounts:
-            - name: prometheus-config-volume
-              mountPath: /etc/prometheus/
-            - name: prometheus-storage-volume
-              mountPath: /prometheus/
-      volumes:
+  hostNetwork: true
+  nodeSelector:
+    node-role.kubernetes.io/master: ""
+  tolerations:
+  - key: CriticalAddonsOnly
+    operator: Exists
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/master
+  - effect: NoSchedule
+    key: node-role.kubernetes.io/control-plane
+  containers:
+    - name: prometheus
+      image: prom/prometheus:v2.26.0
+      args:
+        - "--config.file=/etc/prometheus/prometheus.yml"
+        - "--storage.tsdb.path=/prometheus/"
+        - "--web.enable-admin-api"
+      ports:
+        - containerPort: 9090
+      volumeMounts:
         - name: prometheus-config-volume
-          configMap:
-            defaultMode: 420
-            name: prometheus-server-conf
+          mountPath: /etc/prometheus/
         - name: prometheus-storage-volume
-          emptyDir: {}
-
+          mountPath: /prometheus/
+  volumes:
+    - name: prometheus-config-volume
+      configMap:
+        defaultMode: 420
+        name: prometheus-server-conf
+    - name: prometheus-storage-volume
+      emptyDir: {}

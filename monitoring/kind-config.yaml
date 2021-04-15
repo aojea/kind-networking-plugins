@@ -14,7 +14,3 @@ kubeadmConfigPatches:
   controllerManager:
     extraArgs:
       "v": "4"
-      "bind-address": "0.0.0.0"
-  scheduler:
-    extraArgs:
-      "v": "4"
