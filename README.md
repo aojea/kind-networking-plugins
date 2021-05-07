@@ -2,6 +2,10 @@
 
 Plugins to extend KIND networking capabilities with plugins using the KIND API
 
+These plugins were used for the Kubecon EU 2021 presentation
+["Kubernetes Advanced Networking Testing with KIND"](./Kubernetes _Advanced_Networking_Testing _with_KIND_Antonio_Ojea_Kubecon_2021.pdf)
+
+
 ## Overview
 
 [KIND](https://kind.sigs.k8s.io/) is a tool for running local Kubernetes clusters using Docker container “nodes”.
