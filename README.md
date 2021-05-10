@@ -2,7 +2,7 @@
 
 Plugins to extend KIND networking capabilities with plugins using the KIND API
 
-These plugins were used for the Kubecon EU 2021 presentation
+These plugins were used for the [Kubecon EU 2021 presentation](https://sched.co/iE3g)
 [Kubernetes Advanced Networking Testing with KIND](./Kubernetes_Advanced_Networking_Testingwith_KIND_Antonio_Ojea_Kubecon_2021.pdf)
 
 
